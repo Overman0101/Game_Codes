@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Platformer Camera Demo</title>
+    <style>
+        body { background: #222; color: #fff; text-align: center; font-family: sans-serif; }
+        canvas { background: #111; border: 4px solid #444; display: block; margin: 20px auto; }
+    </style>
+</head>
+<body>
+    <h2>Platformer Camera (Smooth Tracking + Look-Ahead)</h2>
+    <p>Use <b>Arrow Keys</b> or <b>A/D</b> to run, and <b>Spacebar</b> or <b>W</b> to jump across platforms!</p>
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const viewWidth = 800;
+const viewHeight = 450;
+
+// Large platformer level dimensions
+const levelWidth = 2400;
+const levelHeight = 600;
+
+// Player physics properties
+let player = {
+    x: 100, y: 350, width: 24, height: 36,
+    vx: 0, vy: 0, speed: 4.5, jumpForce: -11, gravity: 0.5,
+    isGrounded: false, facing: 1 // 1 = right, -1 = left
+};
+
+let camera = { x: 0, y: 0 };
+let keys = {};
+
+// Simple level platforms [x, y, width, height]
+const platforms = [
+    { x: 0, y: 410, w: 2400, h: 40 }, // Ground floor
+    { x: 300, y: 310, w: 200, h: 20 },
+    { x: 600, y: 220, w: 180, h: 20 },
+    { x: 900, y: 150, w: 220, h: 20 },
+    { x: 1250, y: 280, w: 150, h: 20 },
+    { x: 1500, y: 200, w: 200, h: 20 },
+    { x: 1800, y: 310, w: 300, h: 20 }
+];
+
+window.addEventListener("keydown", (e) => {
+    keys[e.key] = true;
+    if ((e.key === " " || e.key === "ArrowUp" || e.key === "w") && player.isGrounded) {
+        player.vy = player.jumpForce;
+        player.isGrounded = false;
+    }
+});
+window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+function update() {
+    // Horizontal movement
+    if (keys["ArrowLeft"] || keys["a"]) {
+        player.vx = -player.speed;
+        player.facing = -1;
+    } else if (keys["ArrowRight"] || keys["d"]) {
+        player.vx = player.speed;
+        player.facing = 1;
+    } else {
+        player.vx = 0;
+    }
+
+    // Apply gravity
+    player.vy += player.gravity;
+
+    // Move horizontally & check platform collisions
+    player.x += player.vx;
+    if (player.x < 0) player.x = 0;
+    if (player.x > levelWidth - player.width) player.x = levelWidth - player.width;
+
+    // Move vertically & check platform collisions
+    player.y += player.vy;
+    player.isGrounded = false;
+
+    for (let p of platforms) {
+        // Check collision with platform top
+        if (
+            player.x < p.x + p.w &&
+            player.x + player.width > p.x &&
+            player.y + player.height >= p.y &&
+            player.y + player.height - player.vy <= p.y + 10 // coming from above
+        ) {
+            player.y = p.y - player.height;
+            player.vy = 0;
+            player.isGrounded = true;
+        }
+    }
+
+    // PLATFORMER CAMERA LOGIC:
+    // 1. Look-ahead offset: shift camera target slightly in the direction the player is facing
+    let lookAhead = player.facing * 100;
+    let targetCamX = player.x - viewWidth / 2 + player.width / 2 + lookAhead;
+    let targetCamY = player.y - viewHeight / 2 + player.height / 2;
+
+    // 2. Smoothly lerp camera position
+    camera.x += (targetCamX - camera.x) * 0.08;
+    camera.y += (targetCamY - camera.y) * 0.08;
+
+    // 3. Clamp camera inside level dimensions
+    camera.x = Math.max(0, Math.min(camera.x, levelWidth - viewWidth));
+    camera.y = Math.max(0, Math.min(camera.y, levelHeight - viewHeight));
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.translate(-Math.floor(camera.x), -Math.floor(camera.y));
+
+    // Draw background grid lines to show scrolling
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= levelWidth; x += 100) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, levelHeight); ctx.stroke();
+    }
+
+    // Draw Platforms
+    ctx.fillStyle = "#4ecca3";
+    for (let p of platforms) {
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    }
+
+    // Draw Player
+    ctx.fillStyle = "#e94560";
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+
+    ctx.restore();
+
+    // UI Info
+    ctx.fillStyle = "#fff";
+    ctx.font = "14px monospace";
+    ctx.fillText(`Use A/D or Arrows to move, Space to Jump`, 20, 30);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Screen-by-Screen Flipper Demo</title>
+    <style>
+        body { background: #222; color: #fff; text-align: center; font-family: sans-serif; }
+        canvas { background: #111; border: 4px solid #444; display: block; margin: 20px auto; }
+    </style>
+</head>
+<body>
+    <h2>Screen-by-Screen Map Flipper</h2>
+    <p>Use <b>Arrow Keys</b> or <b>WASD</b> to move around. Watch the camera flip when crossing screen boundaries!</p>
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// Screen/Room dimensions
+const screenWidth = 600;
+const screenHeight = 400;
+
+// Player starts inside Room 0,0
+let player = { x: 50, y: 50, size: 20, speed: 4 };
+let keys = {};
+
+window.addEventListener("keydown", (e) => keys[e.key] = true);
+window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+function update() {
+    // Movement inputs
+    if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
+    if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
+    if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
+    if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
+
+    // Optional boundary walls to keep player inside a massive virtual world (e.g., 3x3 screens)
+    if (player.x < 0) player.x = 0;
+    if (player.y < 0) player.y = 0;
+    if (player.x > screenWidth * 3 - player.size) player.x = screenWidth * 3 - player.size;
+    if (player.y > screenHeight * 3 - player.size) player.y = screenHeight * 3 - player.size;
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // FLIP-SCREEN MATH: Divide player coordinates by screen size to find current room index
+    let currentScreenX = Math.floor(player.x / screenWidth);
+    let currentScreenY = Math.floor(player.y / screenHeight);
+
+    // Camera offset is fixed to the top-left corner of the current active room
+    let cameraX = currentScreenX * screenWidth;
+    let cameraY = currentScreenY * screenHeight;
+
+    ctx.save();
+    // Shift canvas view relative to the active room
+    ctx.translate(-cameraX, -cameraY);
+
+    // Draw grid lines and room indicators across the virtual world
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    for (let x = 0; x <= screenWidth * 3; x += screenWidth) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, screenHeight * 3); ctx.stroke();
+    }
+    for (let y = 0; y <= screenHeight * 3; y += screenHeight) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(screenWidth * 3, y); ctx.stroke();
+    }
+
+    // Draw some sample world items / obstacles
+    ctx.fillStyle = "#44ff44";
+    ctx.fillRect(250, 180, 100, 40); // Room 0,0 item
+    ctx.fillStyle = "#4444ff";
+    ctx.fillRect(850, 180, 100, 40); // Room 1,0 item
+
+    // Draw Player
+    ctx.fillStyle = "#ff4444";
+    ctx.fillRect(player.x, player.y, player.size, player.size);
+
+    ctx.restore();
+
+    // Draw UI info overlay on screen
+    ctx.fillStyle = "#fff";
+    ctx.font = "16px monospace";
+    ctx.fillText(`Current Room: [X: ${currentScreenX}, Y: ${currentScreenY}]`, 20, 30);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

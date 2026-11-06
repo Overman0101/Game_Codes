@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smooth Scrolling Camera Demo</title>
+    <style>
+        body { background: #222; color: #fff; text-align: center; font-family: sans-serif; }
+        canvas { background: #111; border: 4px solid #444; display: block; margin: 20px auto; }
+    </style>
+</head>
+<body>
+    <h2>Smooth Scrolling Camera Demo</h2>
+    <p>Use <b>Arrow Keys</b> or <b>WASD</b> to move around. Notice how the camera smoothly glides with the player!</p>
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// Viewport dimensions (what the player sees)
+const viewWidth = 600;
+const viewHeight = 400;
+
+// Large virtual world dimensions (bigger than the viewport)
+const worldWidth = 1800;
+const worldHeight = 1200;
+
+// Player starting near the center of the big world
+let player = { x: 900, y: 600, size: 20, speed: 5 };
+let camera = { x: 0, y: 0 };
+let keys = {};
+
+window.addEventListener("keydown", (e) => keys[e.key] = true);
+window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+function update() {
+    // Movement inputs
+    if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
+    if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
+    if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
+    if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
+
+    // Keep player inside the large world boundaries
+    if (player.x < 0) player.x = 0;
+    if (player.y < 0) player.y = 0;
+    if (player.x > worldWidth - player.size) player.x = worldWidth - player.size;
+    if (player.y > worldHeight - player.size) player.y = worldHeight - player.size;
+
+    // 1. Calculate target camera position (to center the player on screen)
+    let targetCamX = player.x - viewWidth / 2 + player.size / 2;
+    let targetCamY = player.y - viewHeight / 2 + player.size / 2;
+
+    // 2. Smoothly interpolate (lerp) camera position towards the target (0.1 controls lag/smoothness speed)
+    camera.x += (targetCamX - camera.x) * 0.1;
+    camera.y += (targetCamY - camera.y) * 0.1;
+
+    // 3. Clamp camera to world borders so it never shows outside the map
+    camera.x = Math.max(0, Math.min(camera.x, worldWidth - viewWidth));
+    camera.y = Math.max(0, Math.min(camera.y, worldHeight - viewHeight));
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    // Shift canvas drawing coordinates by the smoothed camera position
+    ctx.translate(-Math.floor(camera.x), -Math.floor(camera.y));
+
+    // Draw a grid across the entire large world so you can see the scrolling effect
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    for (let x = 0; x <= worldWidth; x += 100) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, worldHeight); ctx.stroke();
+    }
+    for (let y = 0; y <= worldHeight; y += 100) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(worldWidth, y); ctx.stroke();
+    }
+
+    // Draw some static landmarks in the world
+    ctx.fillStyle = "#ffcc00";
+    ctx.fillRect(200, 200, 150, 100);
+    ctx.fillStyle = "#00ccff";
+    ctx.fillRect(1400, 800, 200, 120);
+    ctx.fillStyle = "#ff44aa";
+    ctx.fillRect(800, 200, 120, 120);
+
+    // Draw Player
+    ctx.fillStyle = "#ff4444";
+    ctx.fillRect(player.x, player.y, player.size, player.size);
+
+    ctx.restore();
+
+    // Draw UI info overlay on screen (stays fixed in place)
+    ctx.fillStyle = "#fff";
+    ctx.font = "14px monospace";
+    ctx.fillText(`Player Pos: [X: ${Math.round(player.x)}, Y: ${Math.round(player.y)}]`, 20, 30);
+    ctx.fillText(`Camera Pos: [X: ${Math.round(camera.x)}, Y: ${Math.round(camera.y)}]`, 20, 50);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
