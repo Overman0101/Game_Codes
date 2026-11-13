@@ -165,6 +165,25 @@
     }
     .tool-row button .key { float: right; opacity: .5; font-size: 11px; }
 
+    /* ---------- Image import dialog ---------- */
+    .modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.72);
+        display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal[hidden] { display: none; }
+    .modal-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+        padding: 18px; max-width: 780px; width: 100%; max-height: 94vh; overflow: auto;
+        display: flex; flex-direction: column; gap: 14px; }
+    .modal-card h3 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); }
+    .modal-body { display: flex; gap: 18px; flex-wrap: wrap; }
+    .modal-preview { flex: 1 1 300px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .modal-preview canvas { width: 100%; max-width: 340px; aspect-ratio: 1; image-rendering: pixelated;
+        border: 2px solid var(--line); border-radius: 6px; background: #fff; }
+    #imgInfo { font-size: 12px; color: var(--muted); text-align: center; }
+    .modal-controls { flex: 1 1 250px; display: flex; flex-direction: column; gap: 10px; }
+    .modal-controls .row { display: flex; flex-direction: column; gap: 4px; }
+    .modal-controls .check-row label { color: var(--text); font-weight: 500; }
+    .modal-controls .note { font-size: 11px; color: var(--muted); margin-top: -4px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
     /* ---------- Responsive ---------- */
     @media (max-width: 980px) {
         .workspace { grid-template-columns: 1fr; }
@@ -186,12 +205,12 @@
         <button id="undoBtn">↩️ Undo</button>
         <button id="redoBtn">↪️ Redo</button>
         <button id="clearBtn" class="clear">🗑 Clear</button>
-        <button id="importJsBtn" class="js-import">⬆ Import</button>
+        <button id="importJsBtn" class="js-import" title="Import a TXT/JS animation or an image (PNG, JPG, GIF, WebP)">⬆ Import</button>
         <button id="exportBtn" title="PNG with background">⬇ PNG</button>
         <button id="exportAlphaBtn" title="PNG with transparent background">⬇ PNG (transparent)</button>
         <button id="exportJsBtn" class="js-export">⬇ JS</button>
         <button id="exportTxtBtn" class="txt-export">⬇ TXT</button>
-        <input type="file" id="importFile" accept=".js,.json,.txt">
+        <input type="file" id="importFile" accept=".js,.json,.txt,image/*">
     </div>
 </header>
 
@@ -299,6 +318,39 @@
     </aside>
 
 </main>
+
+<!-- Image import dialog -->
+<div class="modal" id="imgModal" hidden>
+    <div class="modal-card">
+        <h3>Import image</h3>
+        <div class="modal-body">
+            <div class="modal-preview">
+                <canvas id="imgPreview" width="320" height="320"></canvas>
+                <div id="imgInfo"></div>
+            </div>
+            <div class="modal-controls">
+                <div class="row"><label for="imgGrid">Grid size</label>
+                    <select id="imgGrid"><option value="8">8 x 8</option><option value="16">16 x 16</option><option value="32">32 x 32</option><option value="64">64 x 64</option></select></div>
+                <div class="row"><label for="imgFit">Fit</label>
+                    <select id="imgFit"><option value="contain">Fit whole image (keep ratio)</option><option value="cover">Fill (crop edges)</option><option value="stretch">Stretch to square</option></select></div>
+                <div class="row"><label for="imgStyle">Style</label>
+                    <select id="imgStyle"><option value="smooth">Smooth (blend pixels)</option><option value="sharp">Sharp (for existing pixel art)</option></select></div>
+                <div class="row"><label for="imgColors">Colors: <span id="imgColorsVal">24</span></label>
+                    <input type="range" id="imgColors" min="2" max="64" value="24">
+                    <div class="check-row"><input type="checkbox" id="imgKeepAll"><label for="imgKeepAll">Keep all colors</label></div></div>
+                <div class="row"><label for="imgLayer">Put it on</label>
+                    <select id="imgLayer"><option value="0">Layer 1 (base)</option><option value="1">Layer 2 (overlay)</option></select></div>
+                <div class="check-row"><input type="checkbox" id="imgTrim"><label for="imgTrim">Crop to the subject</label></div>
+                <div class="check-row"><input type="checkbox" id="imgRemoveBg"><label for="imgRemoveBg">Remove background</label></div>
+                <div class="note" id="imgBgNote">Background removal needs Layer 2.</div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="imgCancel">Cancel</button>
+            <button id="imgApply" class="js-import">Import</button>
+        </div>
+    </div>
+</div>
 
 <script>
 const canvas = document.getElementById('pixelCanvas');
@@ -925,6 +977,7 @@ undoBtn.addEventListener('click', undo);
 redoBtn.addEventListener('click', redo);
 
 window.addEventListener('keydown', (e) => {
+    if (!imgModal.hidden) { if (e.key === 'Escape') closeImgModal(); return; }
     if (e.code === 'Space') {
         e.preventDefault();
         if (!spaceHeld) { spaceHeld = true; updateCursor(); }
@@ -1137,6 +1190,7 @@ importJsBtn.addEventListener('click', () => importFile.click());
 importFile.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (isImageFile(file)) { openImageImport(file); importFile.value = ''; return; }
     const reader = new FileReader();
 
     reader.onload = (event) => {
@@ -1244,6 +1298,257 @@ viewport.addEventListener('wheel', (e) => {
 document.getElementById('zoomInBtn').addEventListener('click', () => zoomBy(1));
 document.getElementById('zoomOutBtn').addEventListener('click', () => zoomBy(-1));
 document.getElementById('zoomFitBtn').addEventListener('click', () => setZoom(0));
+
+// ---------- Image import (PNG / JPG / GIF / WebP -> pixels) ----------
+const imgModal = document.getElementById('imgModal');
+const imgPreview = document.getElementById('imgPreview');
+const imgInfo = document.getElementById('imgInfo');
+const imgGrid = document.getElementById('imgGrid');
+const imgFit = document.getElementById('imgFit');
+const imgStyle = document.getElementById('imgStyle');
+const imgColors = document.getElementById('imgColors');
+const imgColorsVal = document.getElementById('imgColorsVal');
+const imgKeepAll = document.getElementById('imgKeepAll');
+const imgLayer = document.getElementById('imgLayer');
+const imgTrim = document.getElementById('imgTrim');
+const imgRemoveBg = document.getElementById('imgRemoveBg');
+const imgBgNote = document.getElementById('imgBgNote');
+
+let imgSrc = null;      // { w, h, data, hasAlpha, origW, origH }
+let imgResult = null;   // n x n grid of '#rrggbb' | null (empty)
+
+function isImageFile(f) {
+    return /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name);
+}
+
+function openImageImport(file) {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1024;                       // big photos are shrunk first so conversion stays fast
+        const k = Math.min(1, MAX / Math.max(im.naturalWidth, im.naturalHeight));
+        const w = Math.max(1, Math.round(im.naturalWidth * k));
+        const h = Math.max(1, Math.round(im.naturalHeight * k));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(im, 0, 0, w, h);
+        const data = x.getImageData(0, 0, w, h);
+        let hasAlpha = false;
+        for (let i = 3; i < data.data.length; i += 4) { if (data.data[i] < 250) { hasAlpha = true; break; } }
+        imgSrc = { w, h, data, hasAlpha, origW: im.naturalWidth, origH: im.naturalHeight };
+        imgGrid.value = String(gridSize);
+        imgModal.hidden = false;
+        refreshImgModal();
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); alert('Could not read that image.'); };
+    im.src = url;
+}
+
+function closeImgModal() { imgModal.hidden = true; imgSrc = null; imgResult = null; }
+
+function hexFromRgb(r, g, b) {
+    return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+}
+
+// Median-cut: splits the colour box with the biggest range, so small but distinct
+// colours (eyes, highlights) still get their own palette entry.
+function medianCut(colors, k) {
+    let boxes = [colors.map((_, i) => i)];
+    while (boxes.length < k) {
+        let best = -1, bestRange = 0, bestCh = 0;
+        boxes.forEach((idx, bi) => {
+            if (idx.length < 2) return;
+            for (let ch = 0; ch < 3; ch++) {
+                let lo = 255, hi = 0;
+                for (const i of idx) { const v = colors[i][ch]; if (v < lo) lo = v; if (v > hi) hi = v; }
+                if (hi - lo > bestRange) { bestRange = hi - lo; best = bi; bestCh = ch; }
+            }
+        });
+        if (best < 0 || bestRange === 0) break;
+        const idx = boxes[best].slice().sort((a, b) => colors[a][bestCh] - colors[b][bestCh]);
+        const mid = idx.length >> 1;
+        boxes.splice(best, 1, idx.slice(0, mid), idx.slice(mid));
+    }
+    const out = new Array(colors.length);
+    for (const idx of boxes) {
+        let r = 0, g = 0, b = 0;
+        for (const i of idx) { r += colors[i][0]; g += colors[i][1]; b += colors[i][2]; }
+        const hex = hexFromRgb(r / idx.length, g / idx.length, b / idx.length);
+        for (const i of idx) out[i] = hex;
+    }
+    return out;
+}
+
+function convertImage() {
+    const n = parseInt(imgGrid.value, 10);
+    const { w, h, data, hasAlpha } = imgSrc;
+    const px = data.data;
+    const idxOf = (x, y) => (y * w + x) * 4;
+
+    // 1) optional crop to the subject (bounding box of everything that is not background)
+    let sx = 0, sy = 0, sw = w, sh = h;
+    if (imgTrim.checked) {
+        let bg = null;
+        if (!hasAlpha) {
+            const corners = [[0,0],[w-1,0],[0,h-1],[w-1,h-1]].map(([x,y]) => { const i = idxOf(x,y); return [px[i],px[i+1],px[i+2]]; });
+            bg = corners.sort((a,b) => (a[0]+a[1]+a[2]) - (b[0]+b[1]+b[2]))[1];   // a middle-valued corner
+        }
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = idxOf(x, y);
+                const solid = hasAlpha ? px[i+3] > 40 : (Math.abs(px[i]-bg[0]) + Math.abs(px[i+1]-bg[1]) + Math.abs(px[i+2]-bg[2])) > 60;
+                if (solid) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+            }
+        }
+        if (x1 >= x0 && y1 >= y0) {
+            const m = 2;
+            sx = Math.max(0, x0 - m); sy = Math.max(0, y0 - m);
+            sw = Math.min(w, x1 + 1 + m) - sx; sh = Math.min(h, y1 + 1 + m) - sy;
+        }
+    }
+
+    // 2) how the source rectangle maps onto the grid
+    let scaleX, scaleY, ox = 0, oy = 0;
+    if (imgFit.value === 'stretch') { scaleX = n / sw; scaleY = n / sh; }
+    else {
+        const s = imgFit.value === 'contain' ? Math.min(n / sw, n / sh) : Math.max(n / sw, n / sh);
+        scaleX = scaleY = s; ox = (n - sw * s) / 2; oy = (n - sh * s) / 2;
+    }
+
+    // 3) one colour per cell
+    const sharp = imgStyle.value === 'sharp';
+    const grid = Array.from({ length: n }, () => Array(n).fill(null));
+    for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+            const fx0 = sx + (c - ox) / scaleX, fx1 = sx + (c + 1 - ox) / scaleX;
+            const fy0 = sy + (r - oy) / scaleY, fy1 = sy + (r + 1 - oy) / scaleY;
+            const cx0 = Math.max(fx0, sx), cx1 = Math.min(fx1, sx + sw);
+            const cy0 = Math.max(fy0, sy), cy1 = Math.min(fy1, sy + sh);
+            if (cx1 <= cx0 || cy1 <= cy0) continue;
+            if ((cx1 - cx0) * (cy1 - cy0) < 0.5 * (fx1 - fx0) * (fy1 - fy0)) continue;   // mostly outside the image
+            if (sharp) {
+                const mx = Math.min(sx + sw - 1, Math.max(sx, Math.floor((cx0 + cx1) / 2)));
+                const my = Math.min(sy + sh - 1, Math.max(sy, Math.floor((cy0 + cy1) / 2)));
+                const i = idxOf(mx, my);
+                if (px[i+3] < 128) continue;
+                grid[r][c] = [px[i], px[i+1], px[i+2]];
+            } else {
+                const ix0 = Math.floor(cx0), ix1 = Math.max(ix0 + 1, Math.ceil(cx1));
+                const iy0 = Math.floor(cy0), iy1 = Math.max(iy0 + 1, Math.ceil(cy1));
+                let sr = 0, sg = 0, sb = 0, sa = 0, cnt = 0;
+                for (let y = iy0; y < iy1 && y < h; y++) {
+                    for (let x = ix0; x < ix1 && x < w; x++) {
+                        const i = idxOf(x, y), a = px[i+3];
+                        sr += px[i] * a; sg += px[i+1] * a; sb += px[i+2] * a; sa += a; cnt++;
+                    }
+                }
+                if (!cnt || sa / cnt < 128) continue;
+                grid[r][c] = [sr / sa, sg / sa, sb / sa];
+            }
+        }
+    }
+
+    // 4) limit the palette
+    const cells = [];
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (grid[r][c]) cells.push([r, c]);
+    const raw = cells.map(([r, c]) => grid[r][c]);
+    let hexes;
+    const k = parseInt(imgColors.value, 10);
+    if (imgKeepAll.checked || raw.length === 0) hexes = raw.map(v => hexFromRgb(v[0], v[1], v[2]));
+    else hexes = medianCut(raw, k);
+    const out = Array.from({ length: n }, () => Array(n).fill(null));
+    cells.forEach(([r, c], i) => { out[r][c] = hexes[i]; });
+
+    // 5) optional background removal (Layer 2 only): flood in from the edges
+    if (imgRemoveBg.checked && imgLayer.value === '1') {
+        const counts = new Map();
+        const border = [];
+        for (let i = 0; i < n; i++) border.push([0, i], [n - 1, i], [i, 0], [i, n - 1]);
+        for (const [r, c] of border) { const v = out[r][c]; if (v) counts.set(v, (counts.get(v) || 0) + 1); }
+        if (counts.size) {
+            const bg = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+            const rgbOf = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16));
+            const bgRgb = rgbOf(bg);
+            // near-matches count too: screenshots and JPEGs have slightly noisy backgrounds
+            const nearBg = v => { const q = rgbOf(v); return Math.abs(q[0]-bgRgb[0]) + Math.abs(q[1]-bgRgb[1]) + Math.abs(q[2]-bgRgb[2]) <= 48; };
+            const seen = Array.from({ length: n }, () => Array(n).fill(false));
+            const stack = border.slice();
+            while (stack.length) {
+                const [r, c] = stack.pop();
+                if (r < 0 || c < 0 || r >= n || c >= n || seen[r][c]) continue;
+                if (out[r][c] !== null && !nearBg(out[r][c])) continue;
+                seen[r][c] = true; out[r][c] = null;
+                stack.push([r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]);
+            }
+        }
+    }
+    return out;
+}
+
+function refreshImgModal() {
+    if (!imgSrc) return;
+    imgColorsVal.textContent = imgKeepAll.checked ? 'all' : imgColors.value;
+    imgColors.disabled = imgKeepAll.checked;
+    const onL2 = imgLayer.value === '1';
+    imgRemoveBg.disabled = !onL2;
+    imgBgNote.style.display = onL2 ? 'none' : '';
+
+    imgResult = convertImage();
+    const n = imgResult.length;
+    const pc = imgPreview.getContext('2d');
+    const S = imgPreview.width, cs = S / n;
+    pc.clearRect(0, 0, S, S);
+    for (let r = 0; r < S; r += 16) for (let c = 0; c < S; c += 16) {   // checkerboard shows empty cells
+        pc.fillStyle = ((r + c) / 16) % 2 === 0 ? '#d8d8d8' : '#ffffff'; pc.fillRect(c, r, 16, 16);
+    }
+    const used = new Set();
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+        const v = imgResult[r][c];
+        if (v) { used.add(v); pc.fillStyle = v; pc.fillRect(Math.floor(c * cs), Math.floor(r * cs), Math.ceil(cs), Math.ceil(cs)); }
+    }
+    imgInfo.textContent = imgSrc.origW + '×' + imgSrc.origH + ' px  →  ' + n + '×' + n + ' grid  ·  ' + used.size + ' colors';
+}
+
+[imgGrid, imgFit, imgStyle, imgLayer, imgTrim, imgRemoveBg, imgKeepAll].forEach(el => el.addEventListener('change', refreshImgModal));
+imgColors.addEventListener('input', refreshImgModal);
+document.getElementById('imgCancel').addEventListener('click', closeImgModal);
+imgModal.addEventListener('pointerdown', (e) => { if (e.target === imgModal) closeImgModal(); });
+
+document.getElementById('imgApply').addEventListener('click', () => {
+    if (!imgResult) return;
+    const n = parseInt(imgGrid.value, 10);
+    const layerIdx = parseInt(imgLayer.value, 10);
+    const layerKey = layerIdx === 0 ? 'layer1' : 'layer2';
+    const empty = layerIdx === 0 ? WHITE : CLEAR;
+    if (n !== gridSize) {
+        if (!confirm('This changes the grid to ' + n + ' x ' + n + ' and clears all frames. Continue?')) return;
+        gridSize = n;
+        cellSize = CANVAS_SIZE / gridSize;
+        gridSizeSelect.value = String(n);
+        initStudio();
+    } else {
+        stopAnimationPlayback();
+        saveHistory();                 // so Undo brings the old picture back
+    }
+    const layer = frames[currentFrameIndex][layerKey];
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) layer[r][c] = imgResult[r][c] || empty;
+    if (layerIdx === 0) layer2Btn.click();      // draw on top without touching the base
+    closeImgModal();
+    renderCanvas();
+    renderTimelineThumbs();
+});
+
+// drag & drop an image anywhere on the page
+window.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+window.addEventListener('drop', (e) => {
+    if (!(e.dataTransfer && e.dataTransfer.files.length)) return;
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (isImageFile(f)) openImageImport(f);
+});
 
 // ---------- Canvas size / full screen ----------
 let viewMode = 'normal';
